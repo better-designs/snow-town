@@ -2,10 +2,9 @@
 // Hold the pointer or a finger on the snow and the car, or the ball, heads toward it and presses tracks into the snow.
 // Arrow keys or WASD work too, and the on-screen arrows on touch screens: Down brakes, then reverses.
 import * as THREE from 'three/webgpu'
-import { float, smoothstep, uv, time, hash, instanceIndex, vec3, Fn } from 'three/tsl'
+import { float, smoothstep, uv, time, hash, instanceIndex, vec3, Fn, mix, positionLocal } from 'three/tsl'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js'
-import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js'
 import { createSnowfield, createPlatform } from '../lib/snowfield.js'
 import { buildTown } from '../lib/town.js'
 import { createHoldTarget, createDioramaCamera } from '../lib/hold.js'
@@ -43,6 +42,22 @@ async function loadCar() {
   model.scale.setScalar(scale)
   car.add(model)
   return { car, wheels, scale }
+}
+
+// What the car paint and the snow reflect: a blue sky over a pale horizon, bright snow below it, and a warm glow at the sun.
+function skyEnvironment(renderer, sunDirection) {
+  const sky = new THREE.Scene()
+  const material = new THREE.MeshBasicNodeMaterial({ side: THREE.BackSide })
+  const dir = positionLocal.normalize()
+  const air = mix(vec3(0.78, 0.88, 1), vec3(0.2, 0.42, 0.95), smoothstep(0, 0.85, dir.y))
+  const ground = vec3(0.86, 0.9, 0.98)
+  const glow = dir.dot(vec3(sunDirection.x, sunDirection.y, sunDirection.z)).max(0).pow(48).mul(5)
+  material.colorNode = mix(ground, air, smoothstep(-0.12, 0.02, dir.y)).add(vec3(1, 0.86, 0.66).mul(glow))
+  sky.add(new THREE.Mesh(new THREE.SphereGeometry(20, 32, 16), material))
+  const pmrem = new THREE.PMREMGenerator(renderer)
+  const map = pmrem.fromScene(sky, 0.02).texture
+  material.dispose()
+  return map
 }
 
 function fallingSnow(count) {
@@ -125,13 +140,15 @@ function listenForArrows(keys) {
 export async function setup({ renderer, scene, camera, controls, phone, params, setRow }) {
   setRow('Try', 'Hold the pointer or a finger on the snow: the car, or the ball, heads toward it and leaves tracks.')
   controls.enabled = false
-  scene.background = new THREE.Color('#cfd9e6')
-  scene.fog = new THREE.Fog('#cfd9e6', 18, 45)
-  scene.environment = new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment(), 0.04).texture
-  scene.environmentIntensity = 0.45
-  scene.add(new THREE.HemisphereLight(0xe2ecff, 0x9aa3ae, 1.3))
-  const sun = new THREE.DirectionalLight(0xffe4c4, 2.6)
+  scene.background = new THREE.Color('#c6dbf4')
+  scene.fog = new THREE.Fog('#c6dbf4', 18, 45)
+  // Shade on snow is lit by the sky alone, so it is blue; the sun is warm, and together they make white.
+  const sun = new THREE.DirectionalLight(0xffe6c4, 4.2)
   sun.position.set(-9, 11, 6)
+  const sunDirection = sun.position.clone().normalize()
+  scene.environment = skyEnvironment(renderer, sunDirection)
+  scene.environmentIntensity = 0.35
+  scene.add(new THREE.HemisphereLight(0x86b4ff, 0xf4f7ff, 1.0))
   sun.castShadow = true
   sun.shadow.mapSize.setScalar(phone ? 1024 : 2048)
   sun.shadow.radius = 3
@@ -141,7 +158,7 @@ export async function setup({ renderer, scene, camera, controls, phone, params, 
 
   const field = createSnowfield({
     renderer, size: SIZE, depth: DEPTH, res: phone ? 768 : 1024, meshRes: phone ? 320 : 448,
-    spheres: 1, segments: 4, boxes: 1, tyre: 0.065, refillRate: 0.03, blurRate: 0.2,
+    spheres: 1, segments: 4, boxes: 1, tyre: 0.065, refillRate: 0.03, blurRate: 0.2, sunDirection,
   })
   scene.add(field.mesh, createPlatform(SIZE, DEPTH))
   const { group: town, solids } = buildTown({ size: SIZE })

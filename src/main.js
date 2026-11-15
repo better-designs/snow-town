@@ -74,13 +74,18 @@ renderer.setPixelRatio(Math.min(devicePixelRatio, 2))
 renderer.setSize(innerWidth, innerHeight)
 renderer.shadowMap.enabled = true
 renderer.shadowMap.type = THREE.PCFShadowMap
-renderer.toneMapping = THREE.ACESFilmicToneMapping
+// Neutral keeps white snow white; ACES turned it grey.
+renderer.toneMapping = THREE.NeutralToneMapping
+renderer.toneMappingExposure = 0.88
 document.querySelector('#stage').append(renderer.domElement)
 
 await renderer.init()
 // Read the backend only after init: before it, the renderer reports WebGPU even on a device that falls back.
 const isWebGPU = renderer.backend.isWebGPUBackend === true
 setRow('Backend', isWebGPU ? 'WebGPU' : 'WebGL 2 fallback', isWebGPU ? 'good' : 'bad')
+// On the WebGL 2 path of iOS Safari a depth-compare shadow map reads as shadow everywhere, so the sun never lands.
+// Variance shadows compare in the shader instead, and work on both.
+if (!isWebGPU) renderer.shadowMap.type = THREE.VSMShadowMap
 setRow('Pixel ratio', `${renderer.getPixelRatio()} (device ${devicePixelRatio})`)
 
 const scene = new THREE.Scene()
