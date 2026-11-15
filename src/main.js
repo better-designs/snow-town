@@ -1,8 +1,13 @@
 import * as THREE from 'three/webgpu'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
+import './firefly.css'
 import './style.css'
 
 const DEMOS = {
+  coffee: { label: 'Coffee', load: () => import('./scenes/coffee.js') },
+  bottle: { label: 'Bottle shop', load: () => import('./scenes/bottle.js') },
+  confirmed: { label: 'Order', load: () => import('./scenes/confirmed.js') },
+  snowday: { label: 'Snow day', load: () => import('./scenes/snowday.js') },
   materials: { label: 'Materials', load: () => import('./demos/materials.js') },
   post: { label: 'Post', load: () => import('./demos/post.js') },
   particles: { label: 'Sprites', load: () => import('./demos/particles.js') },
@@ -11,7 +16,7 @@ const DEMOS = {
 }
 
 const params = new URLSearchParams(location.search)
-const demoKey = DEMOS[params.get('demo')] ? params.get('demo') : 'materials'
+const demoKey = DEMOS[params.get('demo')] ? params.get('demo') : 'coffee'
 const forceWebGL = params.get('webgl') === '1'
 const phone = matchMedia('(pointer: coarse)').matches
 
@@ -90,10 +95,34 @@ controls.target.set(0, 1, 0)
 const timer = new THREE.Timer()
 timer.connect(document)
 
+// Scene screens dock one card; the camera's view shifts so the subject sits beside it, never under its text.
+const ui = document.querySelector('#ui')
+function frame() {
+  const card = ui.firstElementChild
+  if (!card) { camera.clearViewOffset(); camera.zoom = 1; camera.updateProjectionMatrix(); return }
+  const r = card.getBoundingClientRect()
+  const top = document.querySelector('.bar').getBoundingClientRect().bottom
+  if (innerWidth >= 900) {
+    // Card on the right: centre the subject in the space to its left.
+    camera.zoom = 1
+    camera.setViewOffset(innerWidth, innerHeight, (innerWidth - r.left) / 2, 0, innerWidth, innerHeight)
+  } else {
+    // Card at the bottom: shrink the view to the gap between the nav and the card, and centre it there.
+    const gap = Math.max(1, r.top - top)
+    camera.zoom = Math.min(1, Math.max(0.4, gap / innerHeight))
+    camera.setViewOffset(innerWidth, innerHeight, 0, innerHeight / 2 - (top + r.top) / 2, innerWidth, innerHeight)
+  }
+  camera.updateProjectionMatrix()
+}
+new ResizeObserver(frame).observe(ui)
+
 let demo
 try {
   const mod = await DEMOS[demoKey].load()
-  demo = await mod.setup({ renderer, scene, camera, controls, isWebGPU, phone, params, setRow, report })
+  demo = await mod.setup({ renderer, scene, camera, controls, isWebGPU, phone, params, setRow, report, ui })
+  frame()
+  // Compile every material before the first frame, so the page does not stall once it is visible.
+  await renderer.compileAsync(scene, camera)
 } catch (err) {
   report(err.message)
   throw err
@@ -103,6 +132,7 @@ addEventListener('resize', () => {
   camera.aspect = innerWidth / innerHeight
   camera.updateProjectionMatrix()
   renderer.setSize(innerWidth, innerHeight)
+  frame()
 })
 
 let frames = 0
