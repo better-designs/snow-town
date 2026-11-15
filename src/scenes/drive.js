@@ -1,4 +1,4 @@
-// Snow town: a miniature snowy town on a diorama platform, with today's weather on top.
+// Snow town: a miniature snowy town on a diorama platform.
 // Hold the pointer or a finger on the snow and the car, or the ball, heads toward it and presses tracks into the snow.
 import * as THREE from 'three/webgpu'
 import { float, smoothstep, uv, time, hash, instanceIndex, vec3, Fn } from 'three/tsl'
@@ -64,32 +64,11 @@ function buildOverlay(onSwap) {
   const overlay = document.createElement('div')
   overlay.className = 'ds town-overlay'
   overlay.innerHTML = `
-    <section class="ds-card town-weather" aria-labelledby="weather-title">
-      <div class="scene-split">
-        <div>
-          <h1 class="ds-section-title" id="weather-title">Snow until 3 pm</h1>
-          <p class="ds-supporting">About 8 cm by evening. Roads may be icy after dark.</p>
-        </div>
-        <span class="town-temp">−2°</span>
-      </div>
-      <div class="scene-hours">
-        <div><span>Now</span><strong>−2°</strong></div>
-        <div><span>1 pm</span><strong>−2°</strong></div>
-        <div><span>2 pm</span><strong>−3°</strong></div>
-        <div><span>3 pm</span><strong>−1°</strong></div>
-      </div>
-      <button class="ds-btn ds-btn-primary" id="weather-remind" type="button">Remind me when it stops</button>
-    </section>
     <div class="ds-card town-switch" role="group" aria-label="What drives through the snow">
       <button class="ds-chip" type="button" data-ride="car" aria-pressed="true">Car</button>
       <button class="ds-chip" type="button" data-ride="ball" aria-pressed="false">Ball</button>
     </div>`
   document.body.append(overlay)
-  const remind = overlay.querySelector('#weather-remind')
-  remind.addEventListener('click', () => {
-    remind.textContent = 'Reminder set for 3 pm'
-    remind.className = 'ds-btn ds-btn-outline'
-  })
   overlay.querySelector('.town-switch').addEventListener('click', (e) => {
     const chip = e.target.closest('[data-ride]')
     if (!chip) return
