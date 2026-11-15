@@ -65,7 +65,7 @@ for (const level of ['warn', 'error']) {
 }
 
 // On a phone the panel starts closed so it does not cover the scene.
-if (phone) document.querySelector('details.status').open = false
+if (phone && !debug) document.querySelector('details.status').open = false
 setRow('Demo', DEMOS[demoKey].label)
 setRow('WebGPU in browser', 'gpu' in navigator ? 'yes' : 'no', 'gpu' in navigator ? 'good' : 'bad')
 

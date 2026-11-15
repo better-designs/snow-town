@@ -1,5 +1,6 @@
 // Snow town: a miniature snowy town on a diorama platform.
 // Hold the pointer or a finger on the snow and the car, or the ball, heads toward it and presses tracks into the snow.
+// Arrow keys or WASD work too, and the on-screen arrows on touch screens: Down brakes, then reverses.
 import * as THREE from 'three/webgpu'
 import { float, smoothstep, uv, time, hash, instanceIndex, vec3, Fn } from 'three/tsl'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
@@ -60,13 +61,27 @@ function fallingSnow(count) {
   return flakes
 }
 
-function buildOverlay(onSwap) {
+const CARET = {
+  up: 'm8 20l8-10l8 10z',
+  down: 'm24 12l-8 10l-8-10z',
+  left: 'm20 24l-10-8l10-8z',
+  right: 'm12 8l10 8l-10 8z',
+}
+const icon = (d) => `<svg viewBox="0 0 32 32" width="24" height="24" aria-hidden="true"><path fill="currentColor" d="${d}"/></svg>`
+
+function buildOverlay(onSwap, keys) {
   const overlay = document.createElement('div')
   overlay.className = 'ds town-overlay'
   overlay.innerHTML = `
     <div class="ds-card town-switch" role="group" aria-label="What drives through the snow">
       <button class="ds-chip" type="button" data-ride="car" aria-pressed="true">Car</button>
       <button class="ds-chip" type="button" data-ride="ball" aria-pressed="false">Ball</button>
+    </div>
+    <div class="town-pad" role="group" aria-label="Arrows">
+      <button class="ds-btn ds-btn-outline town-pad-up" type="button" data-key="up" aria-label="Forward">${icon(CARET.up)}</button>
+      <button class="ds-btn ds-btn-outline town-pad-left" type="button" data-key="left" aria-label="Left">${icon(CARET.left)}</button>
+      <button class="ds-btn ds-btn-outline town-pad-down" type="button" data-key="down" aria-label="Back">${icon(CARET.down)}</button>
+      <button class="ds-btn ds-btn-outline town-pad-right" type="button" data-key="right" aria-label="Right">${icon(CARET.right)}</button>
     </div>`
   document.body.append(overlay)
   overlay.querySelector('.town-switch').addEventListener('click', (e) => {
@@ -75,6 +90,19 @@ function buildOverlay(onSwap) {
     for (const c of overlay.querySelectorAll('[data-ride]')) c.setAttribute('aria-pressed', String(c === chip))
     onSwap(chip.dataset.ride)
   })
+  for (const button of overlay.querySelectorAll('[data-key]')) {
+    const name = button.dataset.key
+    button.addEventListener('pointerdown', (e) => { e.preventDefault(); keys[name] = true })
+    for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) button.addEventListener(ev, () => { keys[name] = false })
+  }
+}
+
+// Arrow keys and WASD, held state only.
+function listenForArrows(keys) {
+  const map = { ArrowUp: 'up', KeyW: 'up', ArrowDown: 'down', KeyS: 'down', ArrowLeft: 'left', KeyA: 'left', ArrowRight: 'right', KeyD: 'right' }
+  addEventListener('keydown', (e) => { if (map[e.code]) { keys[map[e.code]] = true; e.preventDefault() } })
+  addEventListener('keyup', (e) => { if (map[e.code]) keys[map[e.code]] = false })
+  addEventListener('blur', () => { for (const k of Object.keys(keys)) keys[k] = false })
 }
 
 export async function setup({ renderer, scene, camera, controls, phone, params, setRow }) {
@@ -114,6 +142,9 @@ export async function setup({ renderer, scene, camera, controls, phone, params, 
   const hold = createHoldTarget(camera, renderer.domElement, DEPTH)
   const view = createDioramaCamera(camera, SIZE, { followWide: 1, wideScale: 0.34, followNarrow: 1, narrowScale: 0.4 })
   const autodrive = params.get('autodrive') === '1'
+  // Test switch: ?autodrive=keys presses the arrows on a timer, for devices where nobody can press them.
+  const autokeys = params.get('autodrive') === 'keys'
+  const debug = params.get('debug') === '1'
   const state = { x: 0, z: 5.4, heading: Math.PI, vx: 0, vz: 0 }
   const prev = WHEELS.map(() => new THREE.Vector2(NaN, NaN))
   const spin = new THREE.Quaternion()
@@ -129,7 +160,9 @@ export async function setup({ renderer, scene, camera, controls, phone, params, 
     field.park()
     for (const p of prev) p.set(NaN, NaN)
   }
-  buildOverlay(swap)
+  const keys = { up: false, down: false, left: false, right: false }
+  buildOverlay(swap, keys)
+  listenForArrows(keys)
   if (ride === 'ball') {
     swap('ball')
     document.querySelector('[data-ride="ball"]').setAttribute('aria-pressed', 'true')
@@ -155,7 +188,19 @@ export async function setup({ renderer, scene, camera, controls, phone, params, 
   function driveCar(dt, target) {
     let throttle = 0
     let steer = 0
-    if (target) {
+    let braking = false
+    const fx0 = Math.sin(state.heading)
+    const fz0 = Math.cos(state.heading)
+    const rolling = state.vx * fx0 + state.vz * fz0
+    const arrows = keys.up || keys.down || keys.left || keys.right
+    if (arrows) {
+      steer = (keys.left ? 1 : 0) - (keys.right ? 1 : 0)
+      if (keys.up) throttle = 1
+      else if (keys.down) {
+        if (rolling > 0.15) braking = true
+        else throttle = -1
+      }
+    } else if (target) {
       const dx = target.x - state.x
       const dz = target.z - state.z
       const want = Math.atan2(dx, dz)
@@ -167,9 +212,11 @@ export async function setup({ renderer, scene, camera, controls, phone, params, 
     const fz = Math.cos(state.heading)
     let along = state.vx * fx + state.vz * fz
     let side = state.vx * fz - state.vz * fx
-    along += throttle * 4.5 * dt
-    along *= Math.exp(-(target ? 0.6 : 2.2) * dt)
-    along = Math.min(along, 3.4)
+    along += throttle * (throttle > 0 ? 4.5 : 3) * dt
+    if (braking) along = Math.max(0, along - 7 * dt)
+    along *= Math.exp(-(target || throttle !== 0 ? 0.6 : 2.2) * dt)
+    along = THREE.MathUtils.clamp(along, -1.6, 3.4)
+    if (debug) setRow('Speed', `${along.toFixed(2)} (${keys.up ? 'up ' : ''}${keys.down ? 'down ' : ''}${keys.left ? 'left' : ''})`)
     side *= Math.exp(-4 * dt)
     state.heading += steer * 2.8 * dt * THREE.MathUtils.clamp(along / 1.2, -1, 1)
     const nfx = Math.sin(state.heading)
@@ -200,11 +247,17 @@ export async function setup({ renderer, scene, camera, controls, phone, params, 
   }
 
   function rollBall(dt, target) {
-    if (target) {
+    const pushX = (keys.right ? 1 : 0) - (keys.left ? 1 : 0)
+    const pushZ = (keys.down ? 1 : 0) - (keys.up ? 1 : 0)
+    if (pushX || pushZ) {
+      state.vx += pushX * 7 * dt
+      state.vz += pushZ * 7 * dt
+      target = null
+    } else if (target) {
       state.vx += (target.x - state.x) * 5 * dt
       state.vz += (target.z - state.z) * 5 * dt
     }
-    const damp = Math.exp(-(target ? 2.2 : 1.4) * dt)
+    const damp = Math.exp(-(target ? 2.2 : pushX || pushZ ? 0.8 : 1.4) * dt)
     state.vx *= damp
     state.vz *= damp
     const speed = Math.hypot(state.vx, state.vz)
@@ -226,6 +279,12 @@ export async function setup({ renderer, scene, camera, controls, phone, params, 
     update(rawDt, elapsed) {
       const dt = Math.min(rawDt, 1 / 30)
       let target = hold.holding ? hold.aim() : null
+      if (autokeys) {
+        const t = elapsed % 8
+        keys.up = t < 3
+        keys.down = t >= 3 && t < 6.5
+        keys.left = t >= 4 && t < 6.5
+      }
       if (autodrive) target = new THREE.Vector3(Math.sin(elapsed * 0.5) * 4, 0, Math.sin(elapsed) * 2.6 + 1.5)
       if (ride === 'car') driveCar(dt, target)
       else rollBall(dt, target)
