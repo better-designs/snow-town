@@ -9,7 +9,7 @@ import {
   hash, uv, texture, color, positionLocal, positionWorld, transformNormalToView, mx_noise_float,
 } from 'three/tsl'
 
-export function createSnowfield({ renderer, size, res, meshRes, depth, spheres = 0, segments = 0, tyre = 0.05, refillRate = 0.03, blurRate = 0.4 }) {
+export function createSnowfield({ renderer, size, res, meshRes, depth, spheres = 0, segments = 0, boxes = 0, tyre = 0.05, refillRate = 0.03, blurRate = 0.4 }) {
   const options = { type: THREE.HalfFloatType, depthBuffer: false, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter }
   const base = new THREE.RenderTarget(res, res, options)
   const a = new THREE.RenderTarget(res, res, options)
@@ -20,6 +20,10 @@ export function createSnowfield({ renderer, size, res, meshRes, depth, spheres =
   const tyreHalf = uniform(tyre)
   const sphereData = uniformArray(Array.from({ length: Math.max(1, spheres) }, () => new THREE.Vector4(1e4, 1e4, 10, 0)), 'vec4')
   const segmentData = uniformArray(Array.from({ length: Math.max(1, segments) }, () => new THREE.Vector4(1e4, 1e4, 1e4, 1e4)), 'vec4')
+  // A box is a footprint that caps the snow at a height: centre x and z, then sin and cos of its heading;
+  // the second vector holds half width, half length and the cap height.
+  const boxPlace = uniformArray(Array.from({ length: Math.max(1, boxes) }, () => new THREE.Vector4(1e4, 1e4, 0, 1)), 'vec4')
+  const boxShape = uniformArray(Array.from({ length: Math.max(1, boxes) }, () => new THREE.Vector4(0, 0, 10, 0)), 'vec4')
 
   // Fresh snow is never flat: two octaves of noise give soft drifts of about a tenth of the depth.
   const driftMaterial = new THREE.NodeMaterial()
@@ -73,6 +77,18 @@ export function createSnowfield({ renderer, size, res, meshRes, depth, spheres =
         h.assign(min(h, smoothstep(tyreHalf.mul(0.55), tyreHalf, d).mul(rest).add(tread.mul(inside))))
       })
     }
+    if (boxes > 0) {
+      // A car body scrapes the snow under it down to its underside, so snow never shows inside the car.
+      Loop(boxes, ({ i }) => {
+        const place = boxPlace.element(i)
+        const shape = boxShape.element(i)
+        const rel = world.sub(place.xy)
+        const along = rel.x.mul(place.z).add(rel.y.mul(place.w)).abs()
+        const across = rel.x.mul(place.w).sub(rel.y.mul(place.z)).abs()
+        const cover = float(1).sub(smoothstep(shape.y.sub(0.03), shape.y, along)).mul(float(1).sub(smoothstep(shape.x.sub(0.03), shape.x, across)))
+        h.assign(min(h, shape.z.add(float(1).sub(cover).mul(10))))
+      })
+    }
     return vec4(h, h, h, 1)
   })()
   const copyMaterial = new THREE.NodeMaterial()
@@ -123,9 +139,11 @@ export function createSnowfield({ renderer, size, res, meshRes, depth, spheres =
     mesh,
     spheres: sphereData.array,
     segments: segmentData.array,
+    boxes: boxPlace.array.map((place, i) => ({ place, shape: boxShape.array[i] })),
     park() {
       for (const s of sphereData.array) s.set(1e4, 1e4, 10, 0)
       for (const g of segmentData.array) g.set(1e4, 1e4, 1e4, 1e4)
+      for (const p of boxPlace.array) p.set(1e4, 1e4, 0, 1)
     },
     reset,
     update(dt) {

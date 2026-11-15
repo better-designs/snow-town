@@ -117,7 +117,7 @@ export async function setup({ renderer, scene, camera, controls, phone, params, 
 
   const field = createSnowfield({
     renderer, size: SIZE, depth: DEPTH, res: phone ? 768 : 1024, meshRes: phone ? 320 : 448,
-    spheres: 1, segments: 4, tyre: 0.065, refillRate: 0.03, blurRate: 0.2,
+    spheres: 1, segments: 4, boxes: 1, tyre: 0.065, refillRate: 0.03, blurRate: 0.2,
   })
   scene.add(field.mesh, createPlatform(SIZE, DEPTH))
   const { group: town, solids } = buildTown({ size: SIZE })
@@ -206,6 +206,10 @@ export async function setup({ renderer, scene, camera, controls, phone, params, 
     roll += along * dt / (0.38 * scale)
     steerAngle += (steer * 0.5 - steerAngle) * Math.min(1, dt * 10)
     for (const w of wheels) w.node.rotation.set(roll, 0, w.front ? steerAngle : 0, 'ZYX')
+    // The body caps the snow under it just below the underside; the wheels dig the deeper ruts.
+    field.boxes[0].place.set(state.x, state.z, nfx, nfz)
+    // The model's underside sits 9 cm up and its floor mats 10 cm, which is about 0.020 at this scale: cap below that.
+    field.boxes[0].shape.set(0.25, 0.53, 0.015, 0)
     // Each wheel presses a groove from where it was last frame to where it is now.
     WHEELS.forEach((w, i) => {
       const wx = state.x + (w.x * nfz + w.z * nfx) * scale
