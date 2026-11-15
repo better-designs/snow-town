@@ -1,3 +1,4 @@
+[hidden] { display: none !important; }
 :root { --lab-ink: #f4f1ea; --lab-muted: #b8b2a6; --lab-panel: rgb(14 15 19 / 0.82); --lab-line: rgb(255 255 255 / 0.12); --lab-accent: #ffb36b; }
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; background: #0b0c10; }
@@ -52,3 +53,16 @@ body { font: 0.875rem/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-se
 .game-pad button { min-width: 5rem; min-height: 3.5rem; touch-action: none; user-select: none; -webkit-user-select: none; }
 @media (pointer: coarse) { .game-pad { display: flex; } }
 @media (max-width: 56.1875rem) { .game-card { top: calc(max(0.5rem, env(safe-area-inset-top)) + 7rem); left: 0.5rem; right: 0.5rem; width: auto; } }
+
+/* Snow town overlay: today's weather and the car or ball switch. */
+.town-overlay { position: fixed; inset: 0; z-index: 2; pointer-events: none; background: transparent; }
+.town-weather { position: absolute; top: max(1rem, env(safe-area-inset-top)); right: 1rem; width: 21rem; display: grid; gap: 0.75rem; padding: 1.25rem; pointer-events: auto; }
+.town-weather h1, .town-weather p { margin: 0; }
+.town-temp { font-size: 2.75rem; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
+.town-overlay .town-switch { position: absolute; flex-direction: row; left: 50%; bottom: max(1rem, env(safe-area-inset-bottom)); transform: translateX(-50%); display: flex; gap: 0.25rem; padding: 0.375rem; border-radius: 999rem; pointer-events: auto; }
+.town-overlay .town-switch .ds-chip { min-width: 5.5rem; justify-content: center; }
+@media (max-width: 56.1875rem) {
+  .town-weather { left: 0.5rem; right: 0.5rem; top: max(0.5rem, env(safe-area-inset-top)); width: auto; gap: 0.5rem; padding: 0.875rem 1rem; }
+  .town-weather .scene-hours { display: none; }
+  .town-temp { font-size: 2.25rem; }
+}

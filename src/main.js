@@ -5,15 +5,18 @@ import './style.css'
 
 const DEMOS = {
   drive: { label: 'Snow town', load: () => import('./scenes/drive.js') },
-  snow: { label: 'Snow ball', load: () => import('./demos/snow.js') },
-  snowday: { label: 'Snow day', load: () => import('./scenes/snowday.js') },
-  coffee: { label: 'Coffee', load: () => import('./scenes/coffee.js') },
 }
 
 const params = new URLSearchParams(location.search)
 const demoKey = DEMOS[params.get('demo')] ? params.get('demo') : 'drive'
 const forceWebGL = params.get('webgl') === '1'
 const phone = matchMedia('(pointer: coarse)').matches
+// One page, no tabs. ?debug=1 brings back the backend switch and the device panel for testing.
+const debug = params.get('debug') === '1'
+if (!debug) {
+  document.querySelector('.bar').hidden = true
+  document.querySelector('details.status').hidden = true
+}
 
 // Navigation keeps the backend choice; the toggle flips it.
 const linkTo = (demo, webgl) => `?demo=${demo}${webgl ? '&webgl=1' : ''}`

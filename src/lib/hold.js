@@ -27,7 +27,7 @@ export function createHoldTarget(camera, element, height = 0) {
 }
 
 // The camera keeps one angle over the platform and slides toward the subject on narrow screens.
-export function createDioramaCamera(camera, size, { followWide = 0.3, followNarrow = 1, narrowScale = 0.75 } = {}) {
+export function createDioramaCamera(camera, size, { followWide = 0.3, followNarrow = 1, narrowScale = 0.75, wideScale = 1 } = {}) {
   const k = size / 10
   const offset = new THREE.Vector3(0, 6 * k, 8 * k)
   const look = new THREE.Vector3()
@@ -36,7 +36,7 @@ export function createDioramaCamera(camera, size, { followWide = 0.3, followNarr
     update(subject, dt) {
       const narrow = camera.aspect < 1
       const follow = narrow ? followNarrow : followWide
-      const scale = narrow ? narrowScale : 1
+      const scale = narrow ? narrowScale : wideScale
       goal.set(subject.x * follow, 0, subject.z * follow)
       look.lerp(goal, dt > 0 ? 1 - Math.exp(-3 * dt) : 1)
       camera.position.copy(look).addScaledVector(offset, scale)
