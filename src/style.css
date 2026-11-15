@@ -41,3 +41,14 @@ body { font: 0.875rem/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-se
   #ui { left: 0; right: 0; bottom: 0; }
   #ui .scene-card { border-radius: 1.5rem 1.5rem 0 0; padding-bottom: max(1.5rem, env(safe-area-inset-bottom)); }
 }
+
+/* Game HUD: a small task card and, on touch screens, the driving pad. */
+.game-hud { position: fixed; inset: 0; z-index: 2; pointer-events: none; background: transparent; }
+.game-card { position: absolute; top: 4.5rem; right: 1rem; width: min(20rem, calc(100% - 1rem)); display: grid; gap: 0.5rem; padding: 1rem 1.25rem; pointer-events: auto; }
+.game-card h1 { margin: 0; }
+.game-card p { margin: 0; }
+.game-pad { position: absolute; left: 0.75rem; right: 0.75rem; bottom: max(0.75rem, env(safe-area-inset-bottom)); display: none; justify-content: space-between; gap: 0.75rem; }
+.game-pad-group { display: flex; gap: 0.5rem; pointer-events: auto; }
+.game-pad button { min-width: 5rem; min-height: 3.5rem; touch-action: none; user-select: none; -webkit-user-select: none; }
+@media (pointer: coarse) { .game-pad { display: flex; } }
+@media (max-width: 56.1875rem) { .game-card { top: calc(max(0.5rem, env(safe-area-inset-top)) + 7rem); left: 0.5rem; right: 0.5rem; width: auto; } }

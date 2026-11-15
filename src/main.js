@@ -4,6 +4,7 @@ import './firefly.css'
 import './style.css'
 
 const DEMOS = {
+  drive: { label: 'Snow town', load: () => import('./scenes/drive.js') },
   coffee: { label: 'Coffee', load: () => import('./scenes/coffee.js') },
   bottle: { label: 'Bottle shop', load: () => import('./scenes/bottle.js') },
   confirmed: { label: 'Order', load: () => import('./scenes/confirmed.js') },
@@ -140,7 +141,7 @@ let since = performance.now()
 renderer.setAnimationLoop(() => {
   timer.update()
   const dt = timer.getDelta()
-  controls.update()
+  if (!demo?.ownsCamera) controls.update()
   demo?.update?.(dt, timer.getElapsed())
   if (demo?.render) demo.render()
   else renderer.render(scene, camera)
