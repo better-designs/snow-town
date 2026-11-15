@@ -5,19 +5,13 @@ import './style.css'
 
 const DEMOS = {
   drive: { label: 'Snow town', load: () => import('./scenes/drive.js') },
-  coffee: { label: 'Coffee', load: () => import('./scenes/coffee.js') },
-  bottle: { label: 'Bottle shop', load: () => import('./scenes/bottle.js') },
-  confirmed: { label: 'Order', load: () => import('./scenes/confirmed.js') },
+  snow: { label: 'Snow ball', load: () => import('./demos/snow.js') },
   snowday: { label: 'Snow day', load: () => import('./scenes/snowday.js') },
-  materials: { label: 'Materials', load: () => import('./demos/materials.js') },
-  post: { label: 'Post', load: () => import('./demos/post.js') },
-  particles: { label: 'Sprites', load: () => import('./demos/particles.js') },
-  compute: { label: 'Compute', load: () => import('./demos/compute.js') },
-  snow: { label: 'Snow', load: () => import('./demos/snow.js') },
+  coffee: { label: 'Coffee', load: () => import('./scenes/coffee.js') },
 }
 
 const params = new URLSearchParams(location.search)
-const demoKey = DEMOS[params.get('demo')] ? params.get('demo') : 'coffee'
+const demoKey = DEMOS[params.get('demo')] ? params.get('demo') : 'drive'
 const forceWebGL = params.get('webgl') === '1'
 const phone = matchMedia('(pointer: coarse)').matches
 
