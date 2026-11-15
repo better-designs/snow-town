@@ -61,6 +61,14 @@ function fallingSnow(count) {
   return flakes
 }
 
+// Fixed cameras for ?shot=. Each one looks from `from` to `at`.
+const SHOTS = {
+  tracks: { seconds: 14, from: [1.0, 0.42, 5.0], at: [0.0, 0, 4.1] },
+  sun: { seconds: 14, from: [0.5, 2.6, 8.2], at: [0.2, 0, 2.6] },
+  shade: { seconds: 14, from: [-2.5, 1.0, 6.6], at: [-3.5, 0, 4.5] },
+}
+const autoTarget = (t) => new THREE.Vector3(Math.sin(t * 0.5) * 4, 0, Math.sin(t) * 2.6 + 1.5)
+
 const CARET = {
   up: 'm8 20l8-10l8 10z',
   down: 'm24 12l-8 10l-8-10z',
@@ -159,6 +167,8 @@ export async function setup({ renderer, scene, camera, controls, phone, params, 
   // Test switch: ?autodrive=keys presses the arrows on a timer, for devices where nobody can press them.
   const autokeys = params.get('autodrive') === 'keys'
   const debug = params.get('debug') === '1'
+  // Test switch: ?shot=tracks, sun or shade drives a fixed route, then holds one camera, so two builds can be compared.
+  const shot = SHOTS[params.get('shot')]
   const state = { x: 0, z: 5.4, heading: Math.PI, vx: 0, vz: 0 }
   const prev = WHEELS.map(() => new THREE.Vector2(NaN, NaN))
   const spin = new THREE.Quaternion()
@@ -177,7 +187,7 @@ export async function setup({ renderer, scene, camera, controls, phone, params, 
   const keys = { up: false, down: false, left: false, right: false }
   buildOverlay(swap, keys)
   // Recording switch: ?clean=1 hides the on-screen controls for a clean video.
-  if (params.get('clean') === '1') document.querySelector('.town-overlay').hidden = true
+  if (params.get('clean') === '1' || shot) document.querySelector('.town-overlay').hidden = true
   listenForArrows(keys)
   if (ride === 'ball') {
     swap('ball')
@@ -291,9 +301,22 @@ export async function setup({ renderer, scene, camera, controls, phone, params, 
     field.spheres[0].set(state.x, state.z, BALL_RADIUS, BALL_RADIUS)
   }
 
+  if (shot) {
+    for (let i = 0; i < shot.seconds * 60; i++) {
+      if (ride === 'car') driveCar(1 / 60, autoTarget(i / 60))
+      else rollBall(1 / 60, autoTarget(i / 60))
+      field.update(1 / 60)
+    }
+    field.park()
+    camera.position.fromArray(shot.from)
+    camera.lookAt(new THREE.Vector3().fromArray(shot.at))
+  }
+
   return {
     ownsCamera: true,
     update(rawDt, elapsed) {
+      // A shot holds still: the snow passes still run, with no refill and no blur, so the frame cost stays honest.
+      if (shot) { field.update(0); return }
       const dt = Math.min(rawDt, 1 / 30)
       let target = hold.holding ? hold.aim() : null
       if (autokeys) {
@@ -302,7 +325,7 @@ export async function setup({ renderer, scene, camera, controls, phone, params, 
         keys.down = t >= 3 && t < 6.5
         keys.left = t >= 4 && t < 6.5
       }
-      if (autodrive) target = new THREE.Vector3(Math.sin(elapsed * 0.5) * 4, 0, Math.sin(elapsed) * 2.6 + 1.5)
+      if (autodrive) target = autoTarget(elapsed)
       if (ride === 'car') driveCar(dt, target)
       else rollBall(dt, target)
       field.update(dt)
