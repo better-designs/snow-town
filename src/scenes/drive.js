@@ -77,6 +77,7 @@ function buildOverlay(onSwap, keys) {
       <button class="ds-chip" type="button" data-ride="car" aria-pressed="true">Car</button>
       <button class="ds-chip" type="button" data-ride="ball" aria-pressed="false">Ball</button>
     </div>
+    <p class="town-credit">Car model: <a href="https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/CarConcept" target="_blank" rel="noopener">Car Concept</a>, Khronos Group, after a public-domain model by Unity Fan. <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a></p>
     <div class="town-pad" role="group" aria-label="Arrows">
       <button class="ds-btn ds-btn-outline town-pad-up" type="button" data-key="up" aria-label="Forward">${icon(CARET.up)}</button>
       <button class="ds-btn ds-btn-outline town-pad-left" type="button" data-key="left" aria-label="Left">${icon(CARET.left)}</button>
@@ -162,6 +163,8 @@ export async function setup({ renderer, scene, camera, controls, phone, params, 
   }
   const keys = { up: false, down: false, left: false, right: false }
   buildOverlay(swap, keys)
+  // Recording switch: ?clean=1 hides the on-screen controls for a clean video.
+  if (params.get('clean') === '1') document.querySelector('.town-overlay').hidden = true
   listenForArrows(keys)
   if (ride === 'ball') {
     swap('ball')

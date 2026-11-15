@@ -68,3 +68,6 @@ body { font: 0.875rem/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-se
   .town-overlay .town-pad { display: grid; }
   .town-overlay .town-switch { top: max(0.75rem, env(safe-area-inset-top)); bottom: auto; }
 }
+.town-overlay .town-credit { position: absolute; left: 0.75rem; bottom: max(0.5rem, env(safe-area-inset-bottom)); max-width: 18rem; margin: 0; font-size: 0.6875rem; line-height: 1.35; color: #3d4a5c; pointer-events: auto; }
+.town-overlay .town-credit a { color: inherit; }
+@media (pointer: coarse) { .town-overlay .town-credit { left: 0.75rem; right: 12.5rem; bottom: max(0.5rem, env(safe-area-inset-bottom)); } }
