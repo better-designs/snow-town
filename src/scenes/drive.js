@@ -2,10 +2,13 @@
 // by a compute pass (tsl-stylized-environments), snow falls as sprites, and lights glow through bloom.
 import * as THREE from 'three/webgpu'
 import {
-  Fn, Loop, uniform, uniformArray, instanceIndex, uvec2, vec2, vec3, vec4, float, min, max, mix, smoothstep, step,
-  hash, time, uv, texture, storageTexture, deltaTime, positionWorld, normalWorld, transformNormalToView, color, pass, fract, floor,
+  Fn, Loop, uniform, uniformArray, instanceIndex, vec2, vec3, vec4, float, min, max, mix, smoothstep, step,
+  hash, time, uv, texture, positionWorld, normalWorld, transformNormalToView, color, pass, fract, floor,
 } from 'three/tsl'
 import { bloom } from 'three/addons/tsl/display/BloomNode.js'
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
+import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js'
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js'
 
 const SIZE = 64
 const STREETS = [-30, -15, 0, 15, 30]
@@ -17,38 +20,44 @@ function randomStreetPoint() {
   return Math.random() < 0.5 ? new THREE.Vector3(line, 0, along) : new THREE.Vector3(along, 0, line)
 }
 
-function buildCar() {
+// The car is the Car Concept sample model (Khronos Group, from a public-domain model by Unity Fan, CC BY 4.0),
+// compressed with meshopt. Its logo parts are hidden: the licence does not cover them.
+const WHEELS = [
+  { name: 'WheelFrontL', x: 0.98, z: 1.48, front: true },
+  { name: 'WheelFrontR', x: -0.98, z: 1.48, front: true },
+  { name: 'WheelRearL', x: 0.98, z: -1.31, front: false },
+  { name: 'WheelRearR', x: -0.98, z: -1.31, front: false },
+]
+
+async function loadCar() {
+  const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder)
+  const gltf = await loader.loadAsync('/models/car.glb')
+  const model = gltf.scene
+  for (const name of ['License Plate', 'InteriorSteeringEmblem']) {
+    const part = model.getObjectByName(name)
+    if (part) part.visible = false
+  }
+  // Transmission glass renders the scene a second time: too costly on a phone, so tinted glass stands in.
+  const glass = new THREE.MeshPhysicalNodeMaterial({ color: '#0e1621', roughness: 0.05, metalness: 0.2, transparent: true, opacity: 0.55, clearcoat: 1 })
+  model.traverse((o) => {
+    if (o.isMesh && o.material && o.material.transmission > 0) o.material = glass
+  })
+  const wheels = WHEELS.map((w) => ({ ...w, node: model.getObjectByName(w.name) }))
+  for (const w of wheels) w.node.rotation.set(0, 0, 0, 'ZYX') // the showcase pose turns the front wheels; drive starts straight
+
   const car = new THREE.Group()
-  const paint = new THREE.MeshStandardNodeMaterial({ color: '#d2493a', roughness: 0.35, metalness: 0.3 })
-  const glass = new THREE.MeshStandardNodeMaterial({ color: '#1b2430', roughness: 0.1, metalness: 0.6 })
-  const rubber = new THREE.MeshStandardNodeMaterial({ color: '#16181c', roughness: 0.9 })
-  const body = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.6, 3.6), paint)
-  body.position.y = 0.6
-  const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.55, 1.9), glass)
-  cabin.position.set(0, 1.17, -0.25)
-  const roof = new THREE.Mesh(new THREE.BoxGeometry(1.52, 0.08, 1.7), paint)
-  roof.position.set(0, 1.46, -0.25)
-  car.add(body, cabin, roof)
-  const wheelGeometry = new THREE.CylinderGeometry(0.38, 0.38, 0.32, 20).rotateZ(Math.PI / 2)
-  for (const [x, z] of [[-0.95, 1.15], [0.95, 1.15], [-0.95, -1.15], [0.95, -1.15]]) {
-    const wheel = new THREE.Mesh(wheelGeometry, rubber)
-    wheel.position.set(x, 0.38, z)
-    car.add(wheel)
-  }
-  const head = new THREE.MeshBasicNodeMaterial({ color: new THREE.Color('#fff4d6').multiplyScalar(4) })
-  const tail = new THREE.MeshBasicNodeMaterial({ color: new THREE.Color('#ff2a1a').multiplyScalar(3) })
-  for (const x of [-0.6, 0.6]) {
-    const h = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.14, 0.05), head)
-    h.position.set(x, 0.68, 1.81)
-    const t = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.12, 0.05), tail)
-    t.position.set(x, 0.7, -1.81)
-    car.add(h, t)
-  }
-  const beam = new THREE.SpotLight('#fff1d0', 60, 34, 0.55, 0.6, 1.2)
-  beam.position.set(0, 0.9, 1.7)
-  beam.target.position.set(0, 0, 9)
+  car.add(model)
+  const blob = new THREE.MeshBasicNodeMaterial({ color: '#0b0f16', transparent: true, depthWrite: false })
+  blob.opacityNode = float(1).sub(smoothstep(0.15, 0.5, uv().sub(0.5).length())).mul(0.55)
+  const shadow = new THREE.Mesh(new THREE.PlaneGeometry(2.8, 5.4), blob)
+  shadow.rotation.x = -Math.PI / 2
+  shadow.position.y = 0.015
+  car.add(shadow)
+  const beam = new THREE.SpotLight('#fff1d0', 70, 36, 0.55, 0.6, 1.2)
+  beam.position.set(0, 0.8, 2.1)
+  beam.target.position.set(0, 0, 10)
   car.add(beam, beam.target)
-  return car
+  return { car, wheels }
 }
 
 function buildTown(scene) {
@@ -131,10 +140,15 @@ function fallingSnow(count, center) {
   return flakes
 }
 
-export async function setup({ renderer, scene, camera, controls, isWebGPU, phone, setRow }) {
+export async function setup({ renderer, scene, camera, controls, isWebGPU, phone, params, setRow }) {
+  // Test switch: ?demo=drive&autodrive=1 drives a slow loop, for devices where nobody can hold the buttons.
+  const autodrive = params.get('autodrive') === '1'
   setRow('Try', phone ? 'Hold Gas and steer with Left and Right. Brake while turning to slide.' : 'Arrow keys or WASD to drive. Space is the handbrake: hold it in a turn to drift.')
   controls.enabled = false
   scene.background = new THREE.Color('#1c2536')
+  // A dim studio reflection, so the car paint and glass have something to reflect at dusk.
+  scene.environment = new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment(), 0.04).texture
+  scene.environmentIntensity = 0.35
   scene.fog = new THREE.FogExp2('#1c2536', 0.03)
   scene.add(new THREE.HemisphereLight(0xa9bde0, 0x4a5262, 2.2))
   const moon = new THREE.DirectionalLight(0xb4c6ff, 1.2)
@@ -145,8 +159,9 @@ export async function setup({ renderer, scene, camera, controls, isWebGPU, phone
   camera.updateProjectionMatrix()
 
   const solids = buildTown(scene)
-  const car = buildCar()
+  const { car, wheels: carWheels } = await loadCar()
   scene.add(car)
+  setRow('Car model', 'Car Concept, Khronos Group sample assets, after a public-domain model by Unity Fan. CC BY 4.0')
   const snowCenter = uniform(new THREE.Vector3())
   scene.add(fallingSnow(phone ? 1800 : 5000, snowCenter))
 
@@ -168,44 +183,60 @@ export async function setup({ renderer, scene, camera, controls, isWebGPU, phone
   const road = color('#cfd8e4')
   const packed = color('#9aa7b8')
   const wheels = uniformArray(Array.from({ length: 4 }, () => new THREE.Vector4()), 'vec4')
-  let tracks = null
-  if (isWebGPU) {
-    const heightTexture = new THREE.StorageTexture(RES, RES)
-    heightTexture.format = THREE.RedFormat
-    heightTexture.type = THREE.FloatType
-    const height = storageTexture(heightTexture).setAccess(THREE.NodeAccess?.READ_WRITE ?? 'readWrite')
-    const texel = () => uvec2(instanceIndex.mod(RES), instanceIndex.div(RES))
-    const fill = Fn(() => { height.store(texel(), vec4(1, 0, 0, 0)) })().compute(RES * RES)
-    tracks = Fn(() => {
-      const t = texel()
-      const world = t.toVec2().add(0.5).div(RES).sub(0.5).mul(SIZE)
-      const h = height.load(t).r.add(deltaTime.min(1 / 30).mul(0.01)).min(1).toVar()
-      Loop(4, ({ i }) => {
-        const w = wheels.element(i)
-        const a = w.zw
-        const ab = w.xy.sub(a)
-        const ap = world.sub(a)
-        const k = ap.dot(ab).div(max(ab.dot(ab), 1e-5)).clamp(0, 1)
-        const d = ap.sub(ab.mul(k)).length()
-        h.assign(min(h, smoothstep(0.1, 0.2, d).mul(0.85).add(0.15)))
-      })
-      height.store(t, vec4(h, 0, 0, 0))
-    })().compute(RES * RES)
-    renderer.compute(fill)
-
-    const st = positionWorld.xz.div(SIZE).add(0.5)
-    const e = 1 / RES
-    const sample = (o) => texture(heightTexture, st.add(o)).r
-    const press = sample(vec2(0, 0))
-    ground.material.colorNode = mix(packed, mix(fresh, road, roadMask), smoothstep(0.15, 1, press))
-    const dx = sample(vec2(e, 0)).sub(sample(vec2(-e, 0)))
-    const dz = sample(vec2(0, e)).sub(sample(vec2(0, -e)))
-    const n = vec3(dx.mul(-6), float(1), dz.mul(-6)).normalize()
-    ground.material.normalNode = transformNormalToView(vec3(n.x, n.z.negate(), n.y))
-  } else {
-    ground.material.colorNode = mix(fresh, road, roadMask)
-    setRow('Tyre tracks', 'Off: needs WebGPU storage textures. Driving still works.', 'bad')
+  // Snow height lives in two render targets. Each frame one pass presses the tyre paths into B while reading A,
+  // and a second pass copies B back into A. Unlike a storage texture, this runs on Safari's WebGL 2 path too.
+  const targetOptions = { type: THREE.HalfFloatType, depthBuffer: false, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter }
+  const snowA = new THREE.RenderTarget(RES, RES, targetOptions)
+  const snowB = new THREE.RenderTarget(RES, RES, targetOptions)
+  const refill = uniform(0)
+  const fillMaterial = new THREE.NodeMaterial()
+  fillMaterial.fragmentNode = vec4(1)
+  const pressMaterial = new THREE.NodeMaterial()
+  pressMaterial.fragmentNode = Fn(() => {
+    const st = uv()
+    const world = st.sub(0.5).mul(SIZE)
+    const h = texture(snowA.texture, st).r.add(refill).min(1).toVar()
+    Loop(4, ({ i }) => {
+      const w = wheels.element(i)
+      const a = w.zw
+      const ab = w.xy.sub(a)
+      const ap = world.sub(a)
+      const k = ap.dot(ab).div(max(ab.dot(ab), 1e-5)).clamp(0, 1)
+      const d = ap.sub(ab.mul(k)).length()
+      h.assign(min(h, smoothstep(0.1, 0.2, d).mul(0.85).add(0.15)))
+    })
+    return vec4(h, h, h, 1)
+  })()
+  const copyMaterial = new THREE.NodeMaterial()
+  copyMaterial.fragmentNode = texture(snowB.texture, uv())
+  const fillQuad = new THREE.QuadMesh(fillMaterial)
+  const pressQuad = new THREE.QuadMesh(pressMaterial)
+  const copyQuad = new THREE.QuadMesh(copyMaterial)
+  for (const target of [snowA, snowB]) {
+    renderer.setRenderTarget(target)
+    fillQuad.render(renderer)
   }
+  renderer.setRenderTarget(null)
+  const tracks = {
+    run(dt) {
+      refill.value = dt * 0.06
+      renderer.setRenderTarget(snowB)
+      pressQuad.render(renderer)
+      renderer.setRenderTarget(snowA)
+      copyQuad.render(renderer)
+      renderer.setRenderTarget(null)
+    },
+  }
+
+  const st = positionWorld.xz.div(SIZE).add(0.5)
+  const e = 1 / RES
+  const sample = (o) => texture(snowA.texture, st.add(o)).r
+  const press = sample(vec2(0, 0))
+  ground.material.colorNode = mix(packed, mix(fresh, road, roadMask), smoothstep(0.15, 1, press))
+  const dx = sample(vec2(e, 0)).sub(sample(vec2(-e, 0)))
+  const dz = sample(vec2(0, e)).sub(sample(vec2(0, -e)))
+  const n = vec3(dx.mul(-6), float(1), dz.mul(-6)).normalize()
+  ground.material.normalNode = transformNormalToView(vec3(n.x, n.z.negate(), n.y))
 
   // Delivery markers and the arrow that points to the current one.
   const markerMaterial = (hex) => {
@@ -264,7 +295,9 @@ export async function setup({ renderer, scene, camera, controls, isWebGPU, phone
   // Arcade car on snow: full grip forward, little grip sideways, so the car slides in turns.
   const state = { x: 0, z: -22.5, heading: 0, vx: 0, vz: 0 }
   const forward = new THREE.Vector2()
-  const wheelOffsets = [[-0.95, 1.15], [0.95, 1.15], [-0.95, -1.15], [0.95, -1.15]]
+  const wheelOffsets = WHEELS.map((w) => [w.x, w.z])
+  let roll = 0
+  let steerAngle = 0
   const wheelPrev = wheelOffsets.map(() => new THREE.Vector2())
   let firstFrame = true
 
@@ -283,11 +316,16 @@ export async function setup({ renderer, scene, camera, controls, isWebGPU, phone
     detail.textContent = 'Follow the arrow to the orange light.'
   }
   newJob()
+  // Keep the drop-off light visible through the shader warm-up, so it does not stall the first time it appears.
+  dropoff.visible = true
+  let warmed = false
 
   const camTarget = new THREE.Vector3()
   return {
     ownsCamera: true,
     update(rawDt) {
+      if (!warmed) { warmed = true; dropoff.visible = job.phase === 'deliver' }
+      if (autodrive) { input.gas = true; input.left = Math.sin(performance.now() / 1400) > 0.3 }
       const dt = Math.min(rawDt, 1 / 30)
       const fx = Math.sin(state.heading)
       const fz = Math.cos(state.heading)
@@ -311,8 +349,8 @@ export async function setup({ renderer, scene, camera, controls, isWebGPU, phone
       for (const s of solids) {
         const ox = state.x - s.x
         const oz = state.z - s.z
-        const px = s.hx + 1.1 - Math.abs(ox)
-        const pz = s.hz + 1.1 - Math.abs(oz)
+        const px = s.hx + 1.3 - Math.abs(ox)
+        const pz = s.hz + 1.3 - Math.abs(oz)
         if (px > 0 && pz > 0) {
           if (px < pz) { state.x += Math.sign(ox) * px; state.vx *= -0.3 } else { state.z += Math.sign(oz) * pz; state.vz *= -0.3 }
         }
@@ -325,7 +363,11 @@ export async function setup({ renderer, scene, camera, controls, isWebGPU, phone
       car.rotation.y = state.heading
       car.rotation.z = THREE.MathUtils.clamp(-side * 0.012, -0.08, 0.08)
 
-      if (tracks) {
+      roll += along * dt / 0.38
+      steerAngle += (steer * 0.5 - steerAngle) * Math.min(1, dt * 10)
+      for (const w of carWheels) w.node.rotation.set(roll, 0, w.front ? steerAngle : 0, 'ZYX')
+
+      {
         wheelOffsets.forEach(([ox, oz], i) => {
           const wx = state.x + ox * nfz + oz * nfx
           const wz = state.z - ox * nfx + oz * nfz
@@ -334,7 +376,7 @@ export async function setup({ renderer, scene, camera, controls, isWebGPU, phone
           wheelPrev[i].set(wx, wz)
         })
         firstFrame = false
-        renderer.compute(tracks)
+        tracks.run(dt)
       }
 
       // Jobs.
@@ -365,12 +407,12 @@ export async function setup({ renderer, scene, camera, controls, isWebGPU, phone
         }
       }
 
-      arrow.position.set(state.x, 2.4, state.z)
-      arrow.lookAt(goal.x, 2.4, goal.z)
+      arrow.position.set(state.x, 2.6, state.z)
+      arrow.lookAt(goal.x, 2.6, goal.z)
 
       // Chase camera.
       // A portrait phone sees less to the sides, so the camera sits further back and higher.
-      const back = camera.aspect < 1 ? 11 : 7.5
+      const back = camera.aspect < 1 ? 12.5 : 8.5
       camTarget.set(state.x - nfx * back, back * 0.5, state.z - nfz * back)
       camera.position.lerp(camTarget, 1 - Math.exp(-4 * dt))
       camera.lookAt(state.x + nfx * 3, 1, state.z + nfz * 3)
