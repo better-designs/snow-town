@@ -74,8 +74,8 @@ function buildOverlay(onSwap, keys) {
   overlay.className = 'ds town-overlay'
   overlay.innerHTML = `
     <div class="ds-card town-switch" role="group" aria-label="What drives through the snow">
-      <button class="ds-chip" type="button" data-ride="car" aria-pressed="true">Car</button>
-      <button class="ds-chip" type="button" data-ride="ball" aria-pressed="false">Ball</button>
+      <button class="ds-chip" type="button" data-ride="car" aria-pressed="true" aria-keyshortcuts="C">Car <kbd class="ds-kbd" aria-hidden="true">C</kbd></button>
+      <button class="ds-chip" type="button" data-ride="ball" aria-pressed="false" aria-keyshortcuts="B">Ball <kbd class="ds-kbd" aria-hidden="true">B</kbd></button>
     </div>
     <p class="town-credit">Car model: <a href="https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/CarConcept" target="_blank" rel="noopener">Car Concept</a>, Khronos Group, after a public-domain model by Unity Fan. <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a></p>
     <div class="town-pad" role="group" aria-label="Arrows">
@@ -85,11 +85,19 @@ function buildOverlay(onSwap, keys) {
       <button class="ds-btn ds-btn-outline town-pad-right" type="button" data-key="right" aria-label="Right">${icon(CARET.right)}</button>
     </div>`
   document.body.append(overlay)
+  const choose = (ride) => {
+    for (const c of overlay.querySelectorAll('[data-ride]')) c.setAttribute('aria-pressed', String(c.dataset.ride === ride))
+    onSwap(ride)
+  }
   overlay.querySelector('.town-switch').addEventListener('click', (e) => {
     const chip = e.target.closest('[data-ride]')
-    if (!chip) return
-    for (const c of overlay.querySelectorAll('[data-ride]')) c.setAttribute('aria-pressed', String(c === chip))
-    onSwap(chip.dataset.ride)
+    if (chip) choose(chip.dataset.ride)
+  })
+  // C picks the car and B the ball, unless someone is typing in a field.
+  addEventListener('keydown', (e) => {
+    if (e.metaKey || e.ctrlKey || e.altKey || e.target.closest?.('input, textarea, [contenteditable]')) return
+    if (e.code === 'KeyC') choose('car')
+    if (e.code === 'KeyB') choose('ball')
   })
   for (const button of overlay.querySelectorAll('[data-key]')) {
     const name = button.dataset.key
@@ -140,8 +148,13 @@ export async function setup({ renderer, scene, camera, controls, phone, params, 
   ball.visible = false
   scene.add(ball)
 
-  const hold = createHoldTarget(camera, renderer.domElement, DEPTH)
   const view = createDioramaCamera(camera, SIZE, { followWide: 1, wideScale: 0.34, followNarrow: 1, narrowScale: 0.4 })
+  const hold = createHoldTarget(camera, renderer.domElement, DEPTH, { onPinch: (ratio) => view.zoomBy(ratio) })
+  // Mouse wheel and trackpad pinch zoom the camera in or out along the same angle.
+  renderer.domElement.addEventListener('wheel', (e) => {
+    e.preventDefault()
+    view.zoomBy(Math.exp(e.deltaY * (e.ctrlKey ? 0.01 : 0.0008)))
+  }, { passive: false })
   const autodrive = params.get('autodrive') === '1'
   // Test switch: ?autodrive=keys presses the arrows on a timer, for devices where nobody can press them.
   const autokeys = params.get('autodrive') === 'keys'
@@ -219,6 +232,7 @@ export async function setup({ renderer, scene, camera, controls, phone, params, 
     if (braking) along = Math.max(0, along - 7 * dt)
     along *= Math.exp(-(target || throttle !== 0 ? 0.6 : 2.2) * dt)
     along = THREE.MathUtils.clamp(along, -1.6, 3.4)
+    if (debug) setRow('Zoom', view.zoom.toFixed(2))
     if (debug) setRow('Speed', `${along.toFixed(2)} (${keys.up ? 'up ' : ''}${keys.down ? 'down ' : ''}${keys.left ? 'left' : ''})`)
     side *= Math.exp(-4 * dt)
     state.heading += steer * 2.8 * dt * THREE.MathUtils.clamp(along / 1.2, -1, 1)
