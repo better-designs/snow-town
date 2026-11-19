@@ -101,6 +101,7 @@ timer.connect(document)
 // Scene screens dock one card; the camera's view shifts so the subject sits beside it, never under its text.
 const ui = document.querySelector('#ui')
 function frame() {
+  if (params.get('record') === '1') return
   const card = ui.firstElementChild
   if (!card) { camera.clearViewOffset(); camera.zoom = 1; camera.updateProjectionMatrix(); return }
   const r = card.getBoundingClientRect()
@@ -132,15 +133,38 @@ try {
 }
 
 addEventListener('resize', () => {
+  if (params.get('record') === '1') return
   camera.aspect = innerWidth / innerHeight
   camera.updateProjectionMatrix()
   renderer.setSize(innerWidth, innerHeight)
   frame()
 })
 
+// Recording switch: ?record=1 stops the live loop. The recorder steps the scene one fixed frame at a time and
+// reads each frame from the canvas, so a slow frame can never drop or repeat a frame in the video.
+if (params.get('record') === '1') {
+  const [w, h] = (params.get('size') ?? '1080x1920').split('x').map(Number)
+  renderer.setPixelRatio(1)
+  renderer.setSize(w, h, false)
+  camera.aspect = w / h
+  camera.clearViewOffset()
+  camera.zoom = 1
+  camera.updateProjectionMatrix()
+  let elapsed = 0
+  window.recorder = {
+    swap: (ride) => demo.swap(ride),
+    async step(dt) {
+      elapsed += dt
+      demo.update(dt, elapsed)
+      await renderer.renderAsync(scene, camera)
+      return new Promise((done) => renderer.domElement.toBlob(done, 'image/png'))
+    },
+  }
+}
+
 let frames = 0
 let since = performance.now()
-renderer.setAnimationLoop(() => {
+if (params.get('record') !== '1') renderer.setAnimationLoop(() => {
   timer.update()
   const dt = timer.getDelta()
   if (!demo?.ownsCamera) controls.update()

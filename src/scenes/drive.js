@@ -331,6 +331,7 @@ export async function setup({ renderer, scene, camera, controls, phone, params, 
 
   return {
     ownsCamera: true,
+    swap,
     update(rawDt, elapsed) {
       // A shot holds still: the snow passes still run, with no refill and no blur, so the frame cost stays honest.
       if (shot) { field.update(0); return }
