@@ -9,7 +9,7 @@ A tiny snow town you can drive through in the browser, phone included.
 **[Play it](https://snow-town-smoky.vercel.app/?utm_source=github&utm_medium=readme&utm_campaign=snow-town)**
 
 - Hold your finger (or the mouse) on the snow and the car drives there.
-- The arrows reverse it.
+- On a computer, the arrow keys or WASD steer too, and Down reverses.
 - Swap the car for a ball.
 - Every move leaves tracks in the snow.
 

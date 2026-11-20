@@ -9,7 +9,10 @@ const DEMOS = {
 
 const params = new URLSearchParams(location.search)
 const demoKey = DEMOS[params.get('demo')] ? params.get('demo') : 'drive'
-const forceWebGL = params.get('webgl') === '1'
+// Safari's WebGPU leaves the scene dark on iPhone, so Safari and every iOS browser (all run on WebKit) draw with WebGL 2.
+// ?webgpu=1 tries WebGPU anyway, for testing a fix.
+const safari = /AppleWebKit/.test(navigator.userAgent) && !/Chrome|Chromium|Edg/.test(navigator.userAgent)
+const forceWebGL = params.get('webgl') === '1' || (safari && params.get('webgpu') !== '1')
 const phone = matchMedia('(pointer: coarse)').matches
 // One page, no tabs. ?debug=1 brings back the backend switch and the device panel for testing.
 const debug = params.get('debug') === '1'

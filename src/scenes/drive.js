@@ -1,6 +1,6 @@
 // Snow town: a miniature snowy town on a diorama platform.
 // Hold the pointer or a finger on the snow and the car, or the ball, heads toward it and presses tracks into the snow.
-// Arrow keys or WASD work too, and the on-screen arrows on touch screens: Down brakes, then reverses.
+// Arrow keys or WASD work too: Down brakes, then reverses.
 import * as THREE from 'three/webgpu'
 import { float, smoothstep, uv, time, hash, instanceIndex, vec3, Fn, mix, positionLocal } from 'three/tsl'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
@@ -62,14 +62,26 @@ function skyEnvironment(renderer, sunDirection) {
 
 function fallingSnow(count) {
   const material = new THREE.SpriteNodeMaterial({ transparent: true, depthWrite: false })
+  // Flakes are sized to the miniature town: a car is about half a unit long, so a real flake is a few thousandths.
+  const size = hash(instanceIndex.add(5))
   material.positionNode = Fn(() => {
-    const y = hash(instanceIndex.add(3)).sub(time.mul(hash(instanceIndex.add(2)).mul(0.05).add(0.06))).fract().mul(6)
-    const sway = time.mul(0.7).add(hash(instanceIndex.add(4)).mul(6.28)).sin().mul(0.15)
-    return vec3(hash(instanceIndex).sub(0.5).mul(SIZE + 4).add(sway), y, hash(instanceIndex.add(1)).sub(0.5).mul(SIZE + 4))
+    // Bigger flakes fall a little faster; each flake keeps its own speed.
+    const speed = hash(instanceIndex.add(2)).mul(0.035).add(0.045).add(size.mul(0.02))
+    const y = hash(instanceIndex.add(3)).sub(time.mul(speed)).fract().mul(7)
+    // Each flake drifts at its own rhythm, plus a small flutter and one slow gust shared by all.
+    const phase = hash(instanceIndex.add(4)).mul(6.28)
+    const rate = hash(instanceIndex.add(6)).mul(0.9).add(0.4)
+    const drift = time.mul(rate).add(phase).sin().mul(0.12)
+    const flutter = time.mul(rate.mul(4.3)).add(phase.mul(1.7)).sin().mul(0.02)
+    const gust = time.mul(0.11).sin().mul(0.35).add(time.mul(0.06))
+    const x = hash(instanceIndex).sub(0.5).mul(SIZE + 4).add(drift).add(gust).add(SIZE / 2 + 2).mod(SIZE + 4).sub(SIZE / 2 + 2)
+    const z = hash(instanceIndex.add(1)).sub(0.5).mul(SIZE + 4).add(flutter)
+    return vec3(x.add(flutter), y, z)
   })()
-  material.scaleNode = hash(instanceIndex.add(5)).mul(0.025).add(0.02)
-  material.colorNode = vec3(1)
-  material.opacityNode = float(1).sub(smoothstep(0.15, 0.5, uv().sub(0.5).length())).mul(0.9)
+  material.scaleNode = size.mul(size).mul(0.018).add(0.009)
+  material.colorNode = vec3(0.93, 0.96, 1)
+  // Soft edges, and small flakes read fainter, the way out-of-focus snow does.
+  material.opacityNode = float(1).sub(smoothstep(0.05, 0.5, uv().sub(0.5).length())).mul(size.mul(0.35).add(0.65))
   const flakes = new THREE.Sprite(material)
   flakes.count = count
   flakes.frustumCulled = false
@@ -84,29 +96,17 @@ const SHOTS = {
 }
 const autoTarget = (t) => new THREE.Vector3(Math.sin(t * 0.5) * 4, 0, Math.sin(t) * 2.6 + 1.5)
 
-const CARET = {
-  up: 'm8 20l8-10l8 10z',
-  down: 'm24 12l-8 10l-8-10z',
-  left: 'm20 24l-10-8l10-8z',
-  right: 'm12 8l10 8l-10 8z',
-}
-const icon = (d) => `<svg viewBox="0 0 32 32" width="24" height="24" aria-hidden="true"><path fill="currentColor" d="${d}"/></svg>`
 
 function buildOverlay(onSwap, keys) {
   const overlay = document.createElement('div')
   overlay.className = 'ds town-overlay'
+  const touch = matchMedia('(pointer: coarse)').matches || navigator.maxTouchPoints > 0
   overlay.innerHTML = `
     <div class="ds-card town-switch" role="group" aria-label="What drives through the snow">
       <button class="ds-chip" type="button" data-ride="car" aria-pressed="true" aria-keyshortcuts="C">Car <kbd class="ds-kbd" aria-hidden="true">C</kbd></button>
       <button class="ds-chip" type="button" data-ride="ball" aria-pressed="false" aria-keyshortcuts="B">Ball <kbd class="ds-kbd" aria-hidden="true">B</kbd></button>
     </div>
-    <p class="town-credit">Car model: <a href="https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/CarConcept" target="_blank" rel="noopener">Car Concept</a>, Khronos Group, after a public-domain model by Unity Fan. <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a></p>
-    <div class="town-pad" role="group" aria-label="Arrows">
-      <button class="ds-btn ds-btn-outline town-pad-up" type="button" data-key="up" aria-label="Forward">${icon(CARET.up)}</button>
-      <button class="ds-btn ds-btn-outline town-pad-left" type="button" data-key="left" aria-label="Left">${icon(CARET.left)}</button>
-      <button class="ds-btn ds-btn-outline town-pad-down" type="button" data-key="down" aria-label="Back">${icon(CARET.down)}</button>
-      <button class="ds-btn ds-btn-outline town-pad-right" type="button" data-key="right" aria-label="Right">${icon(CARET.right)}</button>
-    </div>`
+    <p class="ds-card town-hint" role="note">${touch ? 'Hold your finger on the snow to move' : 'Click and hold on the snow to move'}</p>`
   document.body.append(overlay)
   const choose = (ride) => {
     for (const c of overlay.querySelectorAll('[data-ride]')) c.setAttribute('aria-pressed', String(c.dataset.ride === ride))
@@ -122,11 +122,9 @@ function buildOverlay(onSwap, keys) {
     if (e.code === 'KeyC') choose('car')
     if (e.code === 'KeyB') choose('ball')
   })
-  for (const button of overlay.querySelectorAll('[data-key]')) {
-    const name = button.dataset.key
-    button.addEventListener('pointerdown', (e) => { e.preventDefault(); keys[name] = true })
-    for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) button.addEventListener(ev, () => { keys[name] = false })
-  }
+  // The hint leaves once someone has moved through the snow.
+  const hint = overlay.querySelector('.town-hint')
+  addEventListener('pointerdown', (e) => { if (e.target.tagName === 'CANVAS') hint.hidden = true })
 }
 
 // Arrow keys and WASD, held state only.
@@ -163,7 +161,7 @@ export async function setup({ renderer, scene, camera, controls, phone, params, 
   scene.add(field.mesh, createPlatform(SIZE, DEPTH))
   const { group: town, solids } = buildTown({ size: SIZE })
   scene.add(town)
-  scene.add(fallingSnow(phone ? 1400 : 3200))
+  scene.add(fallingSnow(phone ? 5000 : 12000))
 
   const { car, wheels, scale } = await loadCar()
   scene.add(car)
